@@ -60,6 +60,7 @@
   import TorrentPage from '@/routes/torrentManager/TorrentPage.svelte'
   import { status } from '@/modules/networking.js'
   import { modal } from '@/modules/navigation.js'
+  import semver from 'semver'
   import { AppWindow, Puzzle, User, Heart, Logs, Play, Rss, Download, LayoutDashboard } from 'lucide-svelte'
 
   export let statusTransition = false
@@ -142,7 +143,7 @@
       <div class='d-none d-lg-block mt-auto'>
         <p class='text-muted px-20 py-10 m-0'>Restart may be required for some settings to take effect.</p>
         <p class='text-muted px-20 pb-10 m-0'>If you don't know what settings do what, use defaults.</p>
-        <p class='text-muted px-20 m-0 mb-lg-20'>{version ? `v${version}` : ``} {platformMap[VERSION.platform] || 'dev'} {VERSION.arch || 'dev'} {capitalize(VERSION.session) || ''}</p>
+        <p class='text-muted px-20 m-0 mb-lg-20'>{version ? `v${version} ${semver.prerelease(version) ? `(Nightly)` : ``}` : ``} {platformMap[VERSION.platform] || 'dev'} {VERSION.arch || 'dev'} {capitalize(VERSION.session) || ''}</p>
       </div>
     </div>
     <div class='mt-75 mt-lg-0 w-full overflow-y-auto overflow-y-md-hidden'>

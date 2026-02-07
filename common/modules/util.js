@@ -384,13 +384,17 @@ export function matchPhrase(search, phrase, threshold, strict = false, soft = fa
  * @returns {Readable<any>} A derived store emitting distinct deep values.
  */
 export function uniqueStore(store) {
-  let last
-  return derived(store, ($value, set) => {
-    if (last !== $value) {
-      last = $value
-      set($value)
+  let last = store.value
+  return {
+    subscribe(fn) {
+      return store.subscribe(($value) => {
+        if (last !== $value) {
+          last = $value
+          fn($value)
+        }
+      })
     }
-  })
+  }
 }
 
 export function capitalize(str) {
@@ -557,6 +561,7 @@ export const defaults = {
   volume: 1,
   uiScale: 1,
   presetTheme: 'default-dark',
+  updateChannel: 'stable',
   playerAutoplay: true,
   playerPause: true,
   playerAutocomplete: true,

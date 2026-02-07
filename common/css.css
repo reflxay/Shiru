@@ -96,7 +96,7 @@
   --quinary-color: #D7060A !important;
   --senary-color: #FFD600 !important;
   --septenary-color: #8927FF !important;
-  --octonary-color: #FF5E00 !important;
+  --octonary-color: #FF6B35 !important;
   --denary-color: #BC2023 !important;
   --undenary-color-hue: 240deg;
   --undenary-color-saturation: 100%;
@@ -106,6 +106,8 @@
   --undenary-color-dim: hsl(var(--undenary-color-dim-hsl)) !important;
   --duodenary-color: #FFFFF0 !important;
   --quattuordenary-color: #FA68B6 !important;
+  --nonary-color: #F7931E !important;
+  --quindenary-color: #FFB088 !important;
 
   --border-color-sp: hsla(var(--gray-color-dim-hsl), 0.2);
   --dm-input-border-color: none;

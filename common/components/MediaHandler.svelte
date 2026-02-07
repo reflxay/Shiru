@@ -66,7 +66,7 @@
                 description: e?.message || String(e),
                 duration: 30000
             })
-          console.error(e)
+          debug(e)
         }) // targetFile is defined to force the targetFile media to load instead of the lowestUnwatched, lowestPlanning, or lowestCurrent
     } else {
       playFile(targetFile)
@@ -353,7 +353,7 @@
       let resolvedByName = []
       try {
         resolvedByName = await AnimeResolver.resolveFileAnime(failedToResolve.map(file => `${torrentName} ${file.name}`))
-      } catch (e) { console.error(e) }
+      } catch (e) { debug(e) }
       failedToResolve.forEach((file) => {
         const parseObject = resolvedByName.find(({ parseObject }) => AnimeResolver.cleanFileName(`${torrentName} ${file.name}`).includes(parseObject.file_name))
         if (Object.keys(parseObject ?? {}).length) {
@@ -499,7 +499,7 @@
               description: e?.message || String(e),
               duration: 30000
           })
-          console.error(e)
+        debug(e)
       })
     return noop
   })
