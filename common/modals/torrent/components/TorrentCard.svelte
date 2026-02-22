@@ -50,13 +50,17 @@
   termMapping.AACX2 = termMapping.AAC
   termMapping.AACX3 = termMapping.AAC
   termMapping.AACX4 = termMapping.AAC
-  termMapping.OPUS = { text: 'Opus', color: 'var(--octonary-color)' }
+  termMapping['OPUS2.0'] = { text: 'Opus', color: 'var(--octonary-color)' }
+  termMapping['OPUS 2.0'] = termMapping['OPUS2.0']
+  termMapping.OPUS = termMapping['OPUS2.0']
   termMapping.EAC3 = { text: 'EAC3', color: 'var(--octonary-color)' }
   termMapping['E-AC-3'] = termMapping.EAC3
   termMapping['E-AC3'] = termMapping.EAC3
   termMapping.AC3 = { text: 'AC3', color: 'var(--octonary-color)' }
   termMapping['AC-3'] = termMapping.AC3
-  termMapping.DDP = { text: 'Dolby', color: 'var(--octonary-color)' }
+  termMapping['DDP2.0'] = { text: 'Dolby', color: 'var(--octonary-color)' }
+  termMapping['DDP 2.0'] = termMapping['DDP2.0']
+  termMapping.DDP = termMapping['DDP2.0']
   termMapping.FLAC = { text: 'FLAC', color: 'var(--octonary-color)' }
   termMapping.FLACX2 = termMapping.FLAC
   termMapping.FLACX3 = termMapping.FLAC
@@ -86,9 +90,14 @@
   termMapping.AV1 = { text: 'AV1', color: 'var(--tertiary-color)' }
   termMapping.MULTISUB = { text: 'Multi Sub', color: 'var(--octonary-color)' }
   termMapping['MULTISUBS'] = termMapping.MULTISUB
+  termMapping['MULTI SUBS'] = termMapping.MULTISUB
   termMapping['MULTI-SUBS'] = termMapping.MULTISUB
   termMapping['MULTISUB'] = termMapping.MULTISUB
+  termMapping['MULTI SUB'] = termMapping.MULTISUB
   termMapping['MULTI-SUB'] = termMapping.MULTISUB
+  termMapping['MULTIPLE SUBTITLES'] = termMapping.MULTISUB
+  termMapping['MULTIPLE SUBTITLE'] = termMapping.MULTISUB
+  termMapping['SUBTITLES'] = termMapping.MULTISUB
   termMapping.DUALAUDIO = { text: 'Dual Audio', color: 'var(--octonary-color)' }
   termMapping.CHINESEAUDIO = { text: 'Chinese Audio', color: 'var(--octonary-color)' }
   termMapping.ENGLISHAUDIO = { text: 'English Audio', color: 'var(--octonary-color)' }
@@ -104,12 +113,21 @@
   termMapping['CHI DUB'] = termMapping.CHINESEAUDIO
   termMapping['CN DUB'] = termMapping.CHINESEAUDIO
   termMapping['ENGLISH AUDIO'] = termMapping.ENGLISHAUDIO
+  termMapping['ENGLISH DUBBED'] = termMapping.ENGLISHAUDIO
   termMapping['ENGLISH DUB'] = termMapping.ENGLISHAUDIO
+  termMapping['ENG DUBBED'] = termMapping.ENGLISHAUDIO
   termMapping['ENG DUB'] = termMapping.ENGLISHAUDIO
   termMapping['EN DUB'] = termMapping.ENGLISHAUDIO
   termMapping['DUAL'] = termMapping.DUALAUDIO
+  termMapping['DUBBED'] = termMapping.ENGLISHAUDIO
   termMapping['DUB'] = termMapping.ENGLISHAUDIO
-  termMapping.RAW = { text: 'Raw', color: 'var(--octonary-color)' }
+  termMapping[' RAW '] = { text: 'Raw', color: 'var(--octonary-color)' }
+  termMapping['RAW '] = termMapping[' RAW ']
+  termMapping[' RAW'] = termMapping[' RAW ']
+  termMapping['(RAW)'] = termMapping[' RAW ']
+  termMapping['[RAW]'] = termMapping[' RAW ']
+  termMapping.UNCENSORED = { text: 'Uncensored', color: 'var(--octonary-color)' }
+  termMapping.UNCENSOR = termMapping.UNCENSORED
 
   /**
    * @param {Object} search
@@ -153,6 +171,7 @@
     }
 
     for (const key of Object.keys(termMapping)) {
+      if (!fileName?.trim().replace(/[[\](){}]/g, '').trim()) break
       if (fileName && (isEnglishDubbed || termMapping[key] !== termMapping.ENGLISHAUDIO) && !terms.some(existingTerm => existingTerm.key === key)) {
         if (!fileName.toLowerCase().includes(key.toLowerCase())) {
           if (matchPhrase(key.toLowerCase(), fileName, 1)) {
@@ -213,8 +232,103 @@
     [group, checksum, ...resolutions, ...video, ...audio].forEach(removeTerm)
     const sanitized = (await sanitiseTerms(search, result))
     sanitized.forEach(term => removeTerm(term.key))
-    simpleName = simpleName.replace(/[[{(]\s*[\]})]/g, '').replace(/,\s*[)\]]/g, match => match.slice(-1)).replace(/,+/g, ',').replace(/[-_.\s]{2,}/g, ' ').replace(/^[, ]+|[, ]+$/g, '').replace(/,\s*([)\]])/g, '$1').replace(/[[(]\s*-\s*[\])]*/g, '').replace(/\(\s?\)/g, '').trim()
+
+    // Clean file name...
+    simpleName = simpleName
+
+      // Normalize apostrophes and single quotes to standard '
+      // Covers: ` ' ' ‛ ′ ‵ ʻ ʼ ʽ
+      .replace(/[`''‛′‵ʻʼʽ]/g, "'")
+
+      // Normalize double quotes to standard "
+      // Covers: " " „ ‟ ″ ‶ «»
+      .replace(/[""„‟″‶«»]/g, '"')
+
+      // Normalize dashes to standard hyphen -
+      // Covers: – — ‒ ‐ ‑ ⁃
+      .replace(/[–—‒‐‑⁃]/g, '-')
+
+      // Normalize weird commas and full-width punctuation
+      // Covers: ， 、﹐﹑
+      .replace(/[，、﹐﹑]/g, ',')
+
+      // Normalize exclamation marks to standard !
+      // Covers: ！﹗
+      .replace(/[！﹗]/g, '!')
+
+      // Remove commas (and any trailing spaces/commas) before closing brackets
+      // Handles cases like 'word, , )' or 'word,)' -> 'word)'
+      .replace(/,[\s,]*(?=[\])])/g, '')
+
+      // Remove commas (and surrounding spaces) immediately after an opening bracket
+      // Handles cases like '(, word' or '[ , word' -> '(word' / '[word'
+      .replace(/([\[(])\s*,\s*/g, '$1')
+
+      // Ensure exactly one space after every comma, including 'word,word' -> 'word, word'
+      .replace(/,(?!\s)/g, ', ')
+
+      // Collapse runs of multiple commas into one, e.g. ',,' -> ','
+      .replace(/,[\s,]*/g, ',')
+
+      // Collapse repeated separators (dashes, underscores, dots) into a single space
+      .replace(/[-_.]{2,}/g, ' ')
+
+      // Normalize ellipsis and multiple dots
+      // Covers: … ‥
+      .replace(/[…‥]/g, '...')
+
+      // Remove any space(s) immediately after an opening bracket
+      // e.g. '( word' -> '(word'
+      .replace(/([\[(])\s+/g, '$1')
+
+      // Remove any space(s) immediately before a closing bracket
+      // e.g. 'word )' -> 'word)'
+      .replace(/\s+([\])])/g, '$1')
+
+      // Strip leading or trailing commas and whitespace from the whole string
+      .replace(/^[,\s]+|[,\s]+$/g, '')
+
+      // Remove leading dashes inside brackets e.g. '[-DL]' -> '[DL]'
+      .replace(/([\[({])\s*-\s*/g, '$1')
+
+      // Remove trailing dashes inside brackets e.g. '[DL-]' -> '[DL]'
+      .replace(/\s*-\s*([\])}])/g, '$1')
+
+      // Remove empty brackets or brackets containing only a dash, underscore, slash or comma
+      // e.g. '[]', '()', '[-]', '( - )', '[_]', '[/]', '[\]', '[,]'
+      .replace(/[\[{(]\s*[-_/\\,]?\s*[\]})]/g, '')
+
+      // Remove unmatched closing brackets by counting openers before each closer
+      // If there is no corresponding opener, the closing bracket is dropped
+      .replace(/[\])}]/g, (match, offset, str) => {
+        const open = match === ']' ? '[' : match === ')' ? '(' : '{'
+        const before = str.slice(0, offset)
+        return (before.match(new RegExp('\\' + open, 'g')) || []).length > (before.match(new RegExp('\\' + match, 'g')) || []).length ? match : ''
+      })
+      .trim()
+
+    // Reintroduce placeholders e.g. series title.
     titleHolders.forEach(title => simpleName = simpleName.replace(new RegExp(title.placeholder, 'g'), title.original))
+
+    // Clean name after restoring placeholders
+    simpleName = simpleName
+
+      // Fix titles with 'word,word' -> 'word, word'
+      .replace(/,(\S)/g, ', $1')
+
+      // Remove leading or trailing dashes
+      .replace(/^[\s-]+|[\s-]+$/g, '')
+
+      // Remove dashes preceded by a space e.g. 'WEB-DL -VARYG' -> 'WEB-DL VARYG'
+      .replace(/ -(\S)/g, ' $1')
+
+      // Collapse multiple spaces into one
+      .replace(/  +/g, ' ')
+
+      // Fix space-comma-space e.g. ' , ' -> ', '
+      .replace(/ , /g, ', ')
+      .trim()
+
     return simpleName
   }
 </script>
