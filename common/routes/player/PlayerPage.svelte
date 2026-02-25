@@ -15,7 +15,7 @@
   import { toast } from 'svelte-sonner'
   import { getChaptersAniSkip } from '@/modules/anime/anime.js'
   import { mediaCache } from '@/modules/cache.js'
-  import Seekbar from 'perfect-seekbar'
+  import Seekbar from '@/routes/player/components/Seekbar.svelte'
   import { click } from '@/modules/click.js'
   import VideoDeband from 'video-deband'
   import Helper from '@/modules/helper.js'
@@ -1138,7 +1138,7 @@
     return _chapters
   }
 
-  // remaps chapters to what perfect-seekbar uses and adds potentially missing chapters
+  // remaps chapters to what the seekbar uses and adds potentially missing chapters
   function sanitiseChapters (_chapters, safeduration) {
     if (!_chapters?.length) return []
     const first = _chapters[0]

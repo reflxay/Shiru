@@ -284,6 +284,9 @@
   min-width: 35rem;
 }
 
+.wm-250 {
+  max-width: 25rem;
+}
 .wm-600 {
   max-width: 60rem;
 }

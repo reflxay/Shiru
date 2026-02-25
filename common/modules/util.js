@@ -194,6 +194,18 @@ export const DOMPARSER = (typeof DOMParser !== 'undefined') && DOMParser.prototy
 
 export const sleep = t => new Promise(resolve => setTimeout(resolve, t).unref?.())
 
+/**
+ * Clamps a numeric value to a given minimum and maximum range.
+ *
+ * @param {number} value The value to clamp.
+ * @param {number} [min=0] The minimum value to clamp.
+ * @param {number} [max=0] The maximum value to clamp.
+ * @returns {number} The clamped value, guaranteed to be within the [min, max] range.
+ */
+export function clamp(value, min = 0, max = 100) {
+  return Math.min(Math.max(value, min), max)
+}
+
 export function toTS (sec, full) {
   if (isNaN(sec) || sec < 0) {
     switch (full) {
