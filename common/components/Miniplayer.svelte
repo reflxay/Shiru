@@ -29,7 +29,6 @@
   import { page, modal } from '@/modules/navigation.js'
   import { settings } from '@/modules/settings.js'
   import { SUPPORTS } from '@/modules/support.js'
-  import { ELECTRON } from '@/modules/bridge.js'
   import { click } from '@/modules/click.js'
 
   export let playbackPaused = true
@@ -63,7 +62,7 @@
   let shelveTimeout = null
   let shelvingTime = 0
   let lastEdgeEnterUnshelve = 0
-  let electronMinimized = false
+  let windowFocused = document.hasFocus()
 
   $: draggingPos = ''
   $: resize = !$isMobile
@@ -74,7 +73,7 @@
   $: shelveTabLeft = shelved ? shelveLeft : !!(position + draggingPos).match(/left/i)
   $: {
     if (active && !dragging && !resizing) idleShelve(playbackPaused, $settings.autoHideMiniplayer)
-    else if (shelved) unshelve()
+    else if (shelved && playerPage && (!$modal || !modal.length)) unshelve()
   }
   $: paddingTop = (() => {
     if (!active || (!position.match(/top/i) && !draggingPos.match(/top/i))) return padding
@@ -256,7 +255,7 @@
     if (isPaused && !hovered && autoHide) {
       shelveTimeout = setTimeout(() => {
         if (playbackPaused && !hovered && active && !dragging && !resizing) triggerShelve()
-      }, 15_000)
+      }, 5_000)
     } else if (!isPaused) unshelve()
   }
   function triggerShelve() {
@@ -280,7 +279,7 @@
   }
 
   function handleEdgeEnter() {
-    if (electronMinimized) return
+    if (!windowFocused) return
     hovered = true
     const now = Date.now()
     if (shelved && settings.value.autoHideMiniplayer && (!shelvingTime || (now - shelvingTime > 400))) {
@@ -352,7 +351,7 @@
     idleTimeout = setTimeout(() => {
       if (!shelved || hovered) return
       triggerBounce()
-    }, 5_000)
+    }, 15_000)
   }
   function triggerBounce() {
     const _bounceId = ++bounceId
@@ -381,16 +380,12 @@
     } else resetIdleBounce()
   }
 
-  const handleVisibility = visible => {
-    requestAnimationFrame(() => electronMinimized = !visible)
-  }
-  ELECTRON.isMinimized().then(isMinimized => {
-    handleVisibility(!isMinimized)
-    ELECTRON.onMinimize(handleVisibility)
-  })
-
+  const onFocus = () => requestAnimationFrame(() => windowFocused = true)
+  const onBlur = () => windowFocused = false
   onMount(() => {
     calculateWidth()
+    window.addEventListener('blur', onBlur)
+    window.addEventListener('focus', onFocus)
     window.addEventListener('resize', calculateWidth)
     document.addEventListener('wheel', onGlobalActivity, { passive: true })
     document.addEventListener('mousemove', onGlobalActivity, { passive: true })
@@ -398,6 +393,8 @@
     document.addEventListener('keydown', onGlobalActivity, { passive: true })
   })
   onDestroy(() => {
+    window.removeEventListener('blur', onBlur)
+    window.removeEventListener('focus', onFocus)
     window.removeEventListener('resize', calculateWidth)
     document.removeEventListener('wheel', onGlobalActivity)
     document.removeEventListener('mousemove', onGlobalActivity)
