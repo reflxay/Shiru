@@ -11,7 +11,7 @@
   import { writable } from 'simple-store-svelte'
   import { createEventDispatcher } from 'svelte'
   import Subtitles from '@/modules/subtitles.js'
-  import { toTS, fastPrettyBytes, matchPhrase, videoRx, isValidNumber } from '@/modules/util.js'
+  import { toTS, fastPrettyBytes, matchPhrase, videoRx, isValidNumber, debounce } from '@/modules/util.js'
   import { toast } from 'svelte-sonner'
   import { getChaptersAniSkip } from '@/modules/anime/anime.js'
   import { mediaCache } from '@/modules/cache.js'
@@ -147,18 +147,25 @@
     }
   }
 
+  const updateSubs = debounce(() => {
+    subs?.renderer?.resize()
+    seek(-0.001)
+    requestAnimationFrame(() => {
+      if (video.currentTime !== 0) seek(0.001)
+    })
+  }, 200) // stupid fix (resize) because video metadata doesn't update for multiple frames
   function checkSubtitle () {
     const lastSubtitle = cache.getEntry(caches.HISTORY, 'lastSubtitle')?.[`${media?.media?.id || media?.title || media?.parseObject?.title || media?.parseObject?.file_name}`]
     if (subHeaders?.length && lastSubtitle) {
       if (lastSubtitle === 'OFF') {
         subs.selectCaptions(-1)
-        setTimeout(() => subs?.renderer?.resize(), 200) // stupid fix (resize) because video metadata doesn't update for multiple frames
+        updateSubs()
       } else {
         for (const track of subHeaders) {
           const trackName = (track?.language || (!Object.values(subs?.headers).some(header => header?.language === 'eng' || header?.language === 'en') ? 'eng' : track?.type)) + (track?.name ? ' - ' + track?.name : '')
           if (matchPhrase(lastSubtitle, trackName, trackName?.length > 10 ? 3 : 2, true) && track?.number) {
             subs.selectCaptions(track.number)
-            setTimeout(() => subs?.renderer?.resize(), 200) // stupid fix (resize) because video metadata doesn't update for multiple frames
+            updateSubs()
             break
           }
         }
@@ -345,7 +352,7 @@
       const tracks = subs.headers.filter(header => header)
       const index = tracks.indexOf(subs.headers[subs.current]) + 1
       subs.selectCaptions(index >= tracks.length ? -1 : subs.headers.indexOf(tracks[index]))
-      setTimeout(() => subs?.renderer?.resize(), 200) // stupid fix because video metadata doesn't update for multiple frames
+      updateSubs()
     }
   }
 
@@ -355,7 +362,10 @@
   let subDelayTimeout
   $: updateDelay(subDelay)
   function updateDelay (delay) {
-    if (subs?.renderer) subs.renderer.timeOffset = Number(delay)
+    if (subs?.renderer) {
+      subs.renderer.timeOffset = Number(delay)
+      updateSubs()
+    }
   }
   function setSubDelay(delay) {
     subDelay = delay
@@ -427,7 +437,7 @@
       else if (!hidden) {
         video.play()
         resetImmerse()
-        setTimeout(() => subs?.renderer?.resize(), 200) // stupid fix because video metadata doesn't update for multiple frames
+        updateSubs()
       }
     } else if (!externalPlayback) video.pause()
   }
@@ -468,7 +478,7 @@
       WPC.send('externalPlay', { current })
     } else paused = !paused
     resetImmerse()
-    setTimeout(() => subs?.renderer?.resize(), 200) // stupid fix because video metadata doesn't update for multiple frames
+    updateSubs()
   }
   let hidden = false
   let visibilityPaused = true
@@ -634,7 +644,7 @@
       for (const track of video.videoTracks) {
         track.selected = track.id === id
       }
-      setTimeout(() => subs?.renderer?.resize(), 200) // stupid fix because video metadata doesn't update for multiple frames
+      updateSubs()
     }
   }
   // function toggleCast () {
@@ -1093,7 +1103,7 @@
     if (skip) playNext()
     else {
       video.play()
-      setTimeout(() => subs?.renderer?.resize(), 200) // stupid fix because video metadata doesn't update for multiple frames
+      updateSubs()
     }
   }
   let resolvePrompt = false
@@ -1102,7 +1112,7 @@
     if (resolve) modal.open(modal.FILE_MANAGER)
     else {
       video.play()
-      setTimeout(() => subs?.renderer?.resize(), 200) // stupid fix because video metadata doesn't update for multiple frames
+      updateSubs()
     }
   }
   let stats = null
@@ -1924,12 +1934,12 @@
           <div class='dropdown-menu dropdown-menu-right ctrl p-10 pb-5 mr-15 text-capitalize text-nowrap'>
             <div class='custom-radio overflow-y-auto overflow-x-hidden hm-400'>
               <input name='subtitle-radio-set' type='radio' id='subtitle-off-radio' value='off' checked={subHeaders && subs?.current === -1} />
-              <label for='subtitle-off-radio' use:click={() => { subs.selectCaptions(-1); setTimeout(() => subs?.renderer?.resize(), 200); cache.setEntry(caches.HISTORY, 'lastSubtitle', { ...(cache.getEntry(caches.HISTORY, 'lastSubtitle') || {}), [media?.media?.id || media?.title || media?.parseObject?.title || media?.parseObject?.file_name]: 'OFF' }) }} class='pb-5'> OFF </label> <!-- stupid fix (resize) because video metadata doesn't update for multiple frames -->
+              <label for='subtitle-off-radio' use:click={() => { subs.selectCaptions(-1); updateSubs(); cache.setEntry(caches.HISTORY, 'lastSubtitle', { ...(cache.getEntry(caches.HISTORY, 'lastSubtitle') || {}), [media?.media?.id || media?.title || media?.parseObject?.title || media?.parseObject?.file_name]: 'OFF' }) }} class='pb-5'> OFF </label>
               {#each subHeaders as track}
                 {#if track}
                   {@const trackName = (track.language || (!Object.values(subs.headers).some(header => header.language === 'eng' || header.language === 'en') ? 'eng' : track.type)) + (track.name ? ' - ' + track.name : '')}
                   <input name='subtitle-radio-set' type='radio' id='subtitle-{track.number}-radio' value={track.number} checked={track.number === subs.current} />
-                  <label for='subtitle-{track.number}-radio' use:click={() => { subs.selectCaptions(track.number); setTimeout(() => subs?.renderer?.resize(), 200); cache.setEntry(caches.HISTORY, 'lastSubtitle', { ...(cache.getEntry(caches.HISTORY, 'lastSubtitle') || {}), [media?.media?.id || media?.title || media?.parseObject?.title || media?.parseObject?.file_name]: trackName }) }} class='pb-5'> <!-- stupid fix (resize) because video metadata doesn't update for multiple frames -->
+                  <label for='subtitle-{track.number}-radio' use:click={() => { subs.selectCaptions(track.number); updateSubs(); cache.setEntry(caches.HISTORY, 'lastSubtitle', { ...(cache.getEntry(caches.HISTORY, 'lastSubtitle') || {}), [media?.media?.id || media?.title || media?.parseObject?.title || media?.parseObject?.file_name]: trackName }) }} class='pb-5'>
                     {trackName}
                   </label>
                 {/if}
