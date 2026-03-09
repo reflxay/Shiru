@@ -535,6 +535,7 @@
     } else setGain({ target: { value: volume } })
     volumeBoosted = !volumeBoosted
     cache.setEntry(caches.HISTORY, 'lastBoosted', { ...(cache.getEntry(caches.HISTORY, 'lastBoosted') || {}), [media?.media?.id || media?.title || media?.parseObject?.title || media?.parseObject?.file_name]: { boosted: volumeBoosted, gain } })
+    return true
   }
   function toggleMute () {
     muted = !muted
@@ -557,7 +558,7 @@
       boostScrollCount++
       const superscripts = ['⁵','⁴','³','²','¹','⁰']
       volumeText = `${(next * 100).toFixed(0)}%${superscripts[boostScrollCount - 1]}`
-      showVolumeTemporarily()
+      showVolumeTemporarily(false)
       return
     }
     // Reset guard if we go back down
@@ -567,19 +568,19 @@
       volume = next
       gain = 1
       volumeBoosted = false
-      volumeText = volume === 0 ? 'Muted' : `${(volume * 100).toFixed(0)}%`
+      muted = volume === 0
     } else {
       setupAudio()
       volume = 1
       gain = next
       volumeBoosted = true
-      volumeText = `${(gain * 100).toFixed(0)}%`
     }
 
     if (audioCtx) gainNode.gain.value = volumeBoosted ? gain : volume
     showVolumeTemporarily()
   }
-  function showVolumeTemporarily() {
+  function showVolumeTemporarily(updateText = true) {
+    if (updateText) volumeText = volume === 0 || muted ? 'Muted' : `${((gain > 1 ? gain : volume) * 100).toFixed(0)}%`
     volumeVisible = true
     clearTimeout(volumeTimeout)
     volumeTimeout = setTimeout(() => volumeVisible = false, 600)
@@ -800,7 +801,7 @@
       desc: 'Toggle Video Debanding'
     },
     KeyM: {
-      fn: () => !viewAnime && (muted = !muted),
+      fn: () => !viewAnime && (muted = !muted) && showVolumeTemporarily(),
       id: 'volume_off',
       icon: VolumeX,
       type: 'icon',
@@ -847,7 +848,7 @@
       desc: 'Cycle Subtitles'
     },
     KeyV: {
-      fn: () => !viewAnime && toggleGain(),
+      fn: () => !viewAnime && toggleGain() && showVolumeTemporarily(),
       id: 'toggle_gain',
       icon: SlidersVertical,
       type: 'icon',
@@ -884,6 +885,8 @@
         e.preventDefault()
         if (volumeBoosted) setGain({ target: { value: Math.min(3, gain + 0.05) } })
         else volume = Math.min(1, volume + 0.05)
+        muted = volume === 0
+        showVolumeTemporarily()
       },
       id: 'volume_up',
       icon: Volume2,
@@ -897,6 +900,8 @@
         e.preventDefault()
         if (volumeBoosted) setGain({ target: { value: Math.max(0, gain - 0.05) } })
         else volume = Math.max(0, volume - 0.05)
+        muted = volume === 0
+        showVolumeTemporarily()
       },
       id: 'volume_down',
       icon: Volume1,
