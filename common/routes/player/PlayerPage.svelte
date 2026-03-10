@@ -1145,7 +1145,12 @@
         stats = {}
         handleStats(a, b, b)
       })
-      if (paused) seek(-0.001) // stupid hack because the initial request doesn't trigger canvas to re-render, stats won't appear unless the current time changes.
+      if (paused) {
+        seek(-0.001) // stupid hack because the initial request doesn't trigger canvas to re-render, stats won't appear unless the current time changes.
+        requestAnimationFrame(() => {
+          if (video.currentTime !== 0) seek(0.001)
+        })
+      }
     }
   }
   async function handleStats (now, metadata, lastmeta) {
