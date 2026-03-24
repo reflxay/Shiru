@@ -171,7 +171,7 @@
   }
 </script>
 
-<form class='container-fluid py-20 px-md-50 bg-dark pb-0 position-sticky top-0 search-container z-40' class:mt-20={!SUPPORTS.isAndroid && !search.fileEdit} class:mt-md-0={!SUPPORTS.isAndroid && !search.fileEdit} class:bg-very-dark={search.fileEdit} on:input bind:this={form}>
+<form class='container-fluid pt-20 px-md-50 bg-dark position-sticky top-0 search-container z-40' class:mt-20={!SUPPORTS.isAndroid && !search.fileEdit} class:mt-md-0={!SUPPORTS.isAndroid && !search.fileEdit} class:bg-very-dark={search.fileEdit} style:--container-color={search.fileEdit ? 'var(--dark-color-dim)' : 'var(--dark-color)'} on:input bind:this={form}>
   <div class='row'>
     <div class='col-lg col-4 p-10 d-flex flex-column justify-content-end' class:d-advanced-title={advancedSearch}>
       <div class='pb-10 font-weight-semi-bold d-flex align-items-center {advancedSearch} font-scale-24'>
@@ -368,6 +368,18 @@
     opacity: 1;
     max-width: 2rem;
     margin-left: 1.5rem;
+  }
+
+  form.search-container::after {
+    content: '';
+    position: absolute;
+    bottom: -1.2rem;
+    left: 0;
+    right: 0;
+    height: 1.2rem;
+    background: linear-gradient(to bottom, var(--container-color), transparent);
+    pointer-events: none;
+    z-index: 1;
   }
 
   input:not(:focus):invalid {

@@ -9,108 +9,147 @@
   import SectionsManager from '@/modules/sections.js'
   import ErrorCard from '@/components/cards/ErrorCard.svelte'
 
-  const items = writable([])
+  /** @type {any} Reactive key, changing this triggers a fresh search */
   export let key
+  /** @type {import('simple-store-svelte').Writable} Search state including filters, load function, and flags */
   export let search
+  /** @type {import('simple-store-svelte').Writable<boolean>} Whether to clear the search */
   export let clearNow = writable(false)
   search?.subscribe((value) => $clearNow = value?.clearNow)
 
+  /** @type {number} Current page index for pagination */
   let page = 0
-  items.value = []
+  /** @type {boolean} Whether scroll-triggered loading is allowed */
+  let canScroll = true
+  /** @type {HTMLElement} The scrollable container element */
   let container = null
+  /** @type {ResizeObserver} Observes container size changes to update row markers */
   let observer = null
+  /** @type {MutationObserver} Observes card additions to update row markers */
+  let mutationObserver = null
+  /** @type {import('simple-store-svelte').Writable<Array>} List of loaded card data items */
+  const items = writable([])
+  /** @type {number} Distance from bottom (px) at which the next page load is triggered */
+  const scrollThreshold = 500
 
+  $: loadTillFull($key)
+
+  /** Recalculates and applies first-in-row / last-in-row classes to all loaded cards */
   function updateRowMarkers() {
     if (!container) return
-    const cards = container.querySelectorAll('.grid-card')
+    const cards = container.querySelectorAll('.small-card, .large-card, .episode-card')
+    const containerRect = container.getBoundingClientRect()
     let currentRow = []
     let prevTop = null
-
     cards.forEach(card => card.classList.remove('first-in-row', 'last-in-row'))
     cards.forEach((card, index) => {
-      const rect = card.getBoundingClientRect()
-      if (rect.top !== prevTop && currentRow.length > 0) {
+      const top = card.getBoundingClientRect().top - containerRect.top + container.scrollTop
+      if (prevTop !== null && !sameRow(top, prevTop) && currentRow.length > 0) {
         currentRow[currentRow.length - 1].classList.add('last-in-row')
         currentRow = []
       }
-
-      if (rect.top !== prevTop) {
+      if (prevTop === null || !sameRow(top, prevTop)) {
         card.classList.add('first-in-row')
         currentRow.push(card)
       } else currentRow.push(card)
-
-      prevTop = rect.top
+      prevTop = top
       if (index === cards.length - 1 && currentRow.length > 0) currentRow[currentRow.length - 1].classList.add('last-in-row')
     })
   }
+  /**
+   * @param {number} a First vertical position
+   * @param {number} b Second vertical position
+   * @returns {boolean} Whether the two positions are within 25px of each other (same row)
+   */
+  const sameRow = (a, b) => Math.abs(a - b) < 25
+  /** Debounced updateRowMarkers for mutation observer (short delay) */
+  const updateRows = debounce(updateRowMarkers, 5)
+  /** Debounced updateRowMarkers for resize observer (long delay) */
+  const resizeRows = debounce(updateRowMarkers, 150)
 
-  function loadSearchData () {
+  /**
+   * Loads the next page of results and appends them to items.
+   * @returns {Promise|null} The last item's data promise, or null if no more pages
+   */
+  function loadSearchData() {
+    if (!$hasNextPage) return null
     const load = $search.load || SectionsManager.createFallbackLoad()
     const nextData = load(++page, undefined, searchCleanup($search))
     $items = [...$items, ...nextData]
-    requestAnimationFrame(updateRowMarkers)
     return nextData[nextData.length - 1].data
   }
+  /** Debounced handler for search input, triggers a fresh load by resetting the key */
   const update = debounce((event) => {
     if (!event.target.classList.contains('no-bubbles')) {
       $key = {}
     }
   }, 500)
 
-  $: loadTillFull($key)
-
-  let canScroll = true
-  async function loadTillFull (_key) {
+  /**
+   * Resets state and loads pages until the viewport is full.
+   * @param {any} _key Current search key, used to bail out if search changes mid-load
+   */
+  async function fillViewport(_key) {
     if (!container) return
     const cachedKey = $key
-    canScroll = false
     page = 0
-    items.value = []
+    $items = []
+    canScroll = false
     hasNextPage.value = true
     await loadSearchData()
-    while ($hasNextPage && container && cachedKey === $key && container.scrollTop + container.clientHeight > container.scrollHeight - 800) {
-      canScroll = false
+    while ($hasNextPage && container && cachedKey === $key && container.scrollTop + container.clientHeight > container.scrollHeight - scrollThreshold) {
       await loadSearchData()
     }
     canScroll = true
   }
+  /** Debounced fillViewport, collapses duplicate calls from the reactive statement and onMount */
+  const loadTillFull = debounce(fillViewport)
 
-  async function infiniteScroll (_container) {
+  /**
+   * Scroll event handler to loads more pages when the user nears the bottom.
+   * @param {any} _container Scroll event or container element
+   */
+  async function handleScroll(_container) {
     const cachedKey = $key
-    const container = _container?.currentTarget || _container
-    if (container && canScroll && $hasNextPage && container.scrollTop + container.clientHeight > container.scrollHeight - 800) {
+    const scrollContainer = _container?.currentTarget || _container
+    if (scrollContainer && canScroll && $hasNextPage && scrollContainer.scrollTop + scrollContainer.clientHeight > scrollContainer.scrollHeight - scrollThreshold) {
       canScroll = false
       await loadSearchData()
-      while ($hasNextPage && container && cachedKey === $key && container.scrollTop + container.clientHeight > container.scrollHeight - 800) {
-        canScroll = false
+      while ($hasNextPage && scrollContainer && cachedKey === $key && scrollContainer.scrollTop + scrollContainer.clientHeight > scrollContainer.scrollHeight - scrollThreshold) {
         await loadSearchData()
       }
       canScroll = true
     }
   }
 
-  onDestroy(() => {
-    observer?.disconnect()
-    window.removeEventListener('resize', updateRowMarkers)
-    if ($search.disableSearch) $search = { format: [], format_not: [], status: [], status_not: [] }
-  })
-
+  /** Sets up ResizeObserver and MutationObserver on the container, then triggers initial load */
   onMount(() => {
     if (container) {
-      observer = new ResizeObserver(updateRowMarkers)
+      let initialResize = true
+      observer = new ResizeObserver(() => !initialResize ? resizeRows() : initialResize = false)
       observer.observe(container)
+      mutationObserver = new MutationObserver((mutations) => {
+        if (mutations.some(mutation => [...mutation.addedNodes].some(node => node.classList?.contains('small-card') || node.classList?.contains('large-card') || node.classList?.contains('episode-card')))) updateRows()
+      })
+      mutationObserver.observe(container, { subtree: true, childList: true })
     }
-    window.addEventListener('resize', updateRowMarkers)
-    loadTillFull()
+    loadTillFull($key)
+  })
+
+  /** Disconnects observers and resets search state if search was file-edit mode */
+  onDestroy(() => {
+    observer?.disconnect()
+    mutationObserver?.disconnect()
+    if ($search.disableSearch) $search = { format: [], format_not: [], status: [], status_not: [] }
   })
 </script>
 
-<div class='bg-dark h-full w-full overflow-y-scroll d-flex flex-wrap flex-row root overflow-x-hidden justify-content-center align-content-start' class:mt-safe-area={!$search.fileEdit && !$status.match(/offline/i)} class:bg-very-dark={$search.fileEdit} bind:this={container} on:scroll={infiniteScroll} on:resize={updateRowMarkers}>
+<div bind:this={container} class='bg-dark h-full w-full overflow-y-scroll d-flex flex-wrap flex-row root overflow-x-hidden justify-content-center align-content-start' class:mt-safe-area={!$search.fileEdit && !$status.match(/offline/i)} class:bg-very-dark={$search.fileEdit} on:scroll={handleScroll} on:resize={resizeRows}>
   <SearchBar bind:search={$search} clearNow={$clearNow} on:input={update} />
-  <div class='w-full d-grid d-md-flex flex-wrap flex-row px-40 justify-content-center align-content-start'>
+  <div class='w-full d-grid d-md-flex flex-wrap flex-row px-40 justify-content-center align-content-start pt-10'>
     {#key $key}
       {#each $items as card}
-        <div class='grid-card'><Card {card} variables={{...$search}} /></div>
+        <Card {card} variables={{...$search}} />
       {/each}
       {#if $items?.length}
         <ErrorCard promise={$items[0].data} />
@@ -129,18 +168,15 @@
   .d-grid {
     grid-template-columns: repeat(auto-fill, minmax(36rem, 1fr));
   }
-
-  .d-grid :global(.first-in-row .small-card-ct  .absolute-container) {
+  .d-grid :global(.small-card-ct:has(.first-in-row) .absolute-container) {
     left: -50% !important;
   }
-  .d-grid :global(.last-in-row .small-card-ct .absolute-container) {
+  .d-grid :global(.small-card-ct:has(.last-in-row) .absolute-container) {
     right: -50% !important;
   }
-
   .d-grid :global(.item.small-card) {
     max-width: 19rem !important;
   }
-
   @media (min-width: 769px) {
     .d-grid :global(.item.small-card) {
       width: 19rem !important;
