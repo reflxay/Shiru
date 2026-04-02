@@ -98,7 +98,7 @@
   $: cache.setEntry(caches.GENERAL, 'volume', String(volume || 0))
   $: launchedExternal = false
   $: externalPlayback = ($settings.enableExternal || launchedExternal) && (SUPPORTS.isAndroid || $settings.playerPath)
-  $: safeduration = externalPlayback ? ((current?.media?.media?.duration || (current?.media?.media?.format && durationMap[current?.media?.media?.format]) || 24) * 60) : (isFinite(duration) ? duration : currentTime)
+  $: safeduration = externalPlayback ? (externalDuration || (current?.media?.media?.duration || (current?.media?.media?.format && durationMap[current?.media?.media?.format]) || 24) * 60) : (isFinite(duration) ? duration : currentTime)
   $: {
     if (hidden) setDiscordRPC(media, video?.currentTime)
     else setDiscordRPC(media, (paused && ($page !== page.PLAYER)))
@@ -295,7 +295,15 @@
       subs = new Subtitles(video, files, current, handleHeaders)
       video.load()
       await loadAnimeProgress()
-    } else externalPlaying = false
+    } else {
+      externalPlaying = false
+      WPC.clear('externalWatched', watchedListener)
+      WPC.clear('externalTime', externalTimeListener)
+      WPC.clear('externalPause', externalPauseListener)
+      WPC.clear('externalDuration', externalDurationListener)
+      WPC.clear('externalEnd', externalEndListener)
+      externalDuration = 0
+    }
     emit('current', current) // #handleCurrent in MediaHandler
     if (externalPlayback) {
       WPC.clear('externalReady', externalReadyListener)
@@ -338,14 +346,15 @@
   }
 
   function saveAnimeProgress (error = false) {
-    if (!error && (buffering || video.readyState < 4)) return
+    if (!error && !externalPlayback && (buffering || video.readyState < 4)) return
     if (error) {
       currentTime = 0
       targetTime = 0
-      video.currentTime = targetTime
+      if (!externalPlayback) video.currentTime = targetTime
     }
-    if (!current?.media?.media?.id || !isValidNumber(current?.media?.episode) || current?.media?.failed || !media?.media?.id || !isValidNumber(media?.episode)) setAnimeProgress({ name: current?.media?.parseObject?.anime_title ? (current?.media?.parseObject?.anime_title + ((media?.season || current?.media?.parseObject?.anime_season ? ` S${media?.season || current?.media?.parseObject?.anime_season}` : '') + ((media?.episode || current?.media?.parseObject?.episode_number ? ` E${media?.episode || current?.media?.parseObject?.episode_number}` : '')))) : current?.name, currentTime: video.currentTime, safeduration })
-    else setAnimeProgress({ mediaId: current.media.media.id, episode: current.media.episode, currentTime: video.currentTime, safeduration })
+    const progressTime = externalPlayback ? currentTime : video.currentTime
+    if (!current?.media?.media?.id || !isValidNumber(current?.media?.episode) || current?.media?.failed || !media?.media?.id || !isValidNumber(media?.episode)) setAnimeProgress({ name: current?.media?.parseObject?.anime_title ? (current?.media?.parseObject?.anime_title + ((media?.season || current?.media?.parseObject?.anime_season ? ` S${media?.season || current?.media?.parseObject?.anime_season}` : '') + ((media?.episode || current?.media?.parseObject?.episode_number ? ` E${media?.episode || current?.media?.parseObject?.episode_number}` : '')))) : current?.name, currentTime: progressTime, safeduration })
+    else setAnimeProgress({ mediaId: current.media.media.id, episode: current.media.episode, currentTime: progressTime, safeduration })
   }
   setInterval(() => {
     if (!paused) saveAnimeProgress()
@@ -448,6 +457,11 @@
 
   let watchedListener
   let androidListener
+  let externalTimeListener
+  let externalPauseListener
+  let externalDurationListener
+  let externalEndListener
+  let externalDuration = 0
   let externalPlaying = false
   function playPause () {
     if (hidden) return
@@ -456,13 +470,48 @@
       if (duration) {
         WPC.clear('externalWatched', watchedListener)
         watchedListener = (detail) => {
-          checkCompletionByTime(detail, duration * 60)
+          WPC.clear('externalTime', externalTimeListener)
+          WPC.clear('externalPause', externalPauseListener)
+          WPC.clear('externalDuration', externalDurationListener)
+          WPC.clear('externalEnd', externalEndListener)
+          checkCompletionByTime(detail, externalDuration || duration * 60)
           currentTime = detail
           targetTime = detail
+          paused = true
           launchedExternal = false
+          externalDuration = 0
         }
         WPC.listen('externalWatched', watchedListener)
       }
+      WPC.clear('externalTime', externalTimeListener)
+      externalTimeListener = (time) => {
+        if (typeof time === 'number' && time >= 0) {
+          currentTime = time
+          targetTime = time
+        }
+      }
+      WPC.listen('externalTime', externalTimeListener)
+      WPC.clear('externalPause', externalPauseListener)
+      externalPauseListener = (isPaused) => {
+        paused = isPaused
+      }
+      WPC.listen('externalPause', externalPauseListener)
+      WPC.clear('externalDuration', externalDurationListener)
+      externalDurationListener = (dur) => {
+        if (typeof dur === 'number' && dur > 0) {
+          externalDuration = dur
+        }
+      }
+      WPC.listen('externalDuration', externalDurationListener)
+      WPC.clear('externalEnd', externalEndListener)
+      externalEndListener = () => {
+        const dur = externalDuration || safeduration
+        currentTime = dur
+        targetTime = dur
+        paused = true
+        checkCompletionByTime(dur, dur)
+      }
+      WPC.listen('externalEnd', externalEndListener)
       externalPlaying = true
       if (SUPPORTS.isAndroid) {
         WPC.clear('androidExternal', androidListener)

@@ -6,6 +6,10 @@ import { makeHash, getInfoHash, hasIntegrity, getProgressAndSize, stringifyQuery
 import { fontRx, sleep, subRx, videoRx, isValidNumber } from '@/modules/util.js'
 import { SUPPORTS } from '@/modules/support.js'
 import { spawn } from 'node:child_process'
+import { createConnection } from 'node:net'
+import { platform, tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { randomBytes } from 'node:crypto'
 import Metadata from '@client/lib/metadata.js'
 import Cache from '@client/lib/torrentcache.js'
 import Debug from 'debug'
@@ -492,6 +496,10 @@ export default class TorrentClient extends WebTorrent {
           if (!torrent || torrent.destroyed) return
           const found = torrent.files.find(file => file.path === data.data.current.path)
           if (!found || found._destroyed) return
+          if (this.mpvSocket) {
+            this.mpvSocket.destroy()
+            this.mpvSocket = null
+          }
           if (this.playerProcess) {
             this.playerProcess.kill()
             this.playerProcess = null
@@ -549,24 +557,82 @@ export default class TorrentClient extends WebTorrent {
         }
         break
       } case 'externalPlay': {
-        const startTime = Date.now()
         const found = this.torrents.find(_torrent => _torrent.current)?.files?.find(file => file.path === data.data.current.path)
         if (!found) return
         this.ipc.removeAllListeners('external-close')
+        if (this.mpvSocket) {
+          this.mpvSocket.destroy()
+          this.mpvSocket = null
+        }
         if (this.playerProcess) {
           this.playerProcess.removeAllListeners('close')
           this.playerProcess.kill()
           this.playerProcess = null
         }
         if (this.player) {
-          this.playerProcess = spawn(this.player, ['' + new URL('http://localhost:' + this.server.address().port + encodeStreamURL(found.streamURL))])
+          const ipcId = randomBytes(4).toString('hex')
+          const ipcPath = platform() === 'win32'
+            ? `\\\\.\\pipe\\shiru-mpv-${ipcId}`
+            : join(tmpdir(), `shiru-mpv-${ipcId}.sock`)
+          let lastTimePos = 0
+          this.playerProcess = spawn(this.player, [
+            `--input-ipc-server=${ipcPath}`,
+            '' + new URL('http://localhost:' + this.server.address().port + encodeStreamURL(found.streamURL))
+          ])
           this.playerProcess.stdout.on('data', () => {})
           this.playerProcess.once('close', () => {
             if (this.destroyed) return
+            if (this.mpvSocket) {
+              this.mpvSocket.destroy()
+              this.mpvSocket = null
+            }
             this.playerProcess = null
-            const seconds = (Date.now() - startTime) / 1000
-            this.dispatch('externalWatched', seconds)
+            this.dispatch('externalWatched', lastTimePos)
           })
+          const connectMpvIPC = (retries = 0) => {
+            if (this.destroyed || !this.playerProcess) return
+            const sock = createConnection(ipcPath)
+            sock.on('connect', () => {
+              debug('Connected to MPV IPC socket')
+              sock.write('{"command": ["observe_property", 1, "time-pos"]}\n')
+              sock.write('{"command": ["observe_property", 2, "pause"]}\n')
+              sock.write('{"command": ["observe_property", 3, "duration"]}\n')
+            })
+            let buffer = ''
+            sock.on('data', (chunk) => {
+              if (sock !== this.mpvSocket) return
+              buffer += chunk.toString()
+              const lines = buffer.split('\n')
+              buffer = lines.pop()
+              for (const line of lines) {
+                if (!line.trim()) continue
+                try {
+                  const msg = JSON.parse(line)
+                  if (msg.event === 'property-change') {
+                    if (msg.id === 1 && typeof msg.data === 'number') {
+                      lastTimePos = msg.data
+                      this.dispatch('externalTime', msg.data)
+                    } else if (msg.id === 2 && typeof msg.data === 'boolean') {
+                      this.dispatch('externalPause', msg.data)
+                    } else if (msg.id === 3 && typeof msg.data === 'number') {
+                      this.dispatch('externalDuration', msg.data)
+                    }
+                  } else if (msg.event === 'end-file' && msg.reason === 'eof') {
+                    this.dispatch('externalEnd')
+                  }
+                } catch {}
+              }
+            })
+            sock.on('error', () => {
+              sock.destroy()
+              if (retries < 10 && this.playerProcess && !this.destroyed) {
+                const timeout = setTimeout(() => connectMpvIPC(retries + 1), 500)
+                timeout.unref?.()
+              }
+            })
+            this.mpvSocket = sock
+          }
+          connectMpvIPC()
         } else if (SUPPORTS.isAndroid) this.dispatch('androidExternal', `intent://localhost:${this.server.address().port}${encodeStreamURL(found.streamURL)}#Intent;type=video/any;scheme=http;end;`)
         break
       } case 'torrent': {
@@ -854,6 +920,10 @@ export default class TorrentClient extends WebTorrent {
       const currentTorrent = this.torrents.find(t => t.current)
       if (currentTorrent) currentTorrent.off('download', this._checkProgress)
       this._checkProgress = null
+    }
+    if (this.mpvSocket) {
+      this.mpvSocket.destroy()
+      this.mpvSocket = null
     }
     if (this.playerProcess) {
       this.playerProcess.removeAllListeners()

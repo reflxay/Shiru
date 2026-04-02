@@ -177,7 +177,7 @@ function setupTorrentClient() {
   }
   client.send('complete_all', cache.getEntry(caches.GENERAL, 'completedTorrents').filter(Boolean))
 
-  for (const event of ['magnet', 'stats', 'chapters', 'progress', 'externalReady', 'externalWatched', 'androidExternal', 'scrape_done', 'rescan_done']) client.on(event, ({ detail }) => WPC.send(event, detail))
+  for (const event of ['magnet', 'stats', 'chapters', 'progress', 'externalReady', 'externalWatched', 'externalTime', 'externalPause', 'externalDuration', 'externalEnd', 'androidExternal', 'scrape_done', 'rescan_done']) client.on(event, ({ detail }) => WPC.send(event, detail))
   for (const event of ['current', 'scrape', 'externalPlay', 'debug']) WPC.listen(event, (detail) => client.send(event, detail))
 
   // external player for android
