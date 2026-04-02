@@ -100,6 +100,7 @@
   $: externalPlayback = ($settings.enableExternal || launchedExternal) && (SUPPORTS.isAndroid || $settings.playerPath)
   $: safeduration = externalPlayback ? (externalDuration || (current?.media?.media?.duration || (current?.media?.media?.format && durationMap[current?.media?.media?.format]) || 24) * 60) : (isFinite(duration) ? duration : currentTime)
   $: {
+    externalDuration
     if (hidden) setDiscordRPC(media, video?.currentTime)
     else setDiscordRPC(media, (paused && ($page !== page.PLAYER)))
   }
